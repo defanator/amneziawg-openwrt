@@ -117,6 +117,8 @@ build-toolchain: $(OPENWRT_SRCDIR)/feeds.conf $(OPENWRT_SRCDIR)/.config ## Build
 	time -p make defconfig ; \
 	time -p make tools/install -i -j $(NPROC) ; \
 	time -p make toolchain/install -i -j $(NPROC) ; \
+	ls -l staging_dir/toolchain-mips_24kc_gcc-11.2.0_musl/initial/lib ; \
+	ls -l staging_dir/toolchain-mips_24kc_gcc-11.2.0_musl/initial/lib/lib ; \
 	}
 
 .PHONY: build-kernel
