@@ -82,23 +82,17 @@ $(OPENWRT_SRCDIR):
 	@{ \
 	set -ex ; \
 	git clone https://github.com/openwrt/openwrt.git $@ ; \
-	}
-
-.PHONY: fetch-openwrt
-fetch-openwrt: | $(OPENWRT_SRCDIR) ## Clone OpenWrt sources of a given release
-	@{ \
-	set -ex ; \
-	cd $(OPENWRT_SRCDIR) ; \
+	cd $@ ; \
 	git checkout v$(OPENWRT_RELEASE) ; \
 	}
 
-$(OPENWRT_SRCDIR)/feeds.conf: fetch-openwrt
+$(OPENWRT_SRCDIR)/feeds.conf: | $(OPENWRT_SRCDIR)
 	@{ \
 	set -ex ; \
 	curl -fsL $(OPENWRT_BASE_URL)/feeds.buildinfo | tee $@ ; \
 	}
 
-$(OPENWRT_SRCDIR)/.config: fetch-openwrt
+$(OPENWRT_SRCDIR)/.config: | $(OPENWRT_SRCDIR)
 	@{ \
 	set -ex ; \
 	curl -fsL $(OPENWRT_BASE_URL)/config.buildinfo > $@ ; \
@@ -126,6 +120,7 @@ build-kernel: $(OPENWRT_SRCDIR)/feeds.conf $(OPENWRT_SRCDIR)/.config ## Build Op
 	@{ \
 	set -ex ; \
 	cd $(OPENWRT_SRCDIR) ; \
+	time -p make defconfig ; \
 	time -p make V=s target/linux/compile -i -j $(NPROC) ; \
 	VERMAGIC=$$(cat ./build_dir/target-$(OPENWRT_ARCH)*/linux-$(OPENWRT_TARGET)_$(OPENWRT_SUBTARGET)/linux-*/.vermagic) ; \
 	echo "Vermagic: $${VERMAGIC}" ; \
