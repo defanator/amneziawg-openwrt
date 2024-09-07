@@ -130,6 +130,21 @@ build-kernel: $(OPENWRT_SRCDIR)/feeds.conf $(OPENWRT_SRCDIR)/.config ## Build Op
 	fi ; \
 	}
 
+# TODO: this should not be required but actions/cache/save@v4 could not handle circular symlinks with error like this:
+# Warning: ELOOP: too many symbolic links encountered, stat '/home/runner/work/amneziawg-openwrt/amneziawg-openwrt/openwrt/staging_dir/toolchain-mips_24kc_gcc-11.2.0_musl/initial/lib/lib'
+# Warning: Cache save failed.
+.PHONY: purge-circular-symlinks
+purge-circular-symlinks:
+	@{ \
+	set -ex ; \
+	cd $(OPENWRT_SRCDIR) ; \
+	export LC_ALL=C ; \
+	for deadlink in $$(find . -follow -type l -printf "" 2>&1 | sed -e "s/find: '\(.*\)': Too many levels of symbolic links.*/\1/"); do \
+		echo "deleting dead link: $${deadlink}" ; \
+		rm -f "$${deadlink}" ; \
+	done ; \
+	}
+
 .PHONY: build-amneziawg
 build-amneziawg: ## Build amneziawg-openwrt kernel module and packages
 	@{ \

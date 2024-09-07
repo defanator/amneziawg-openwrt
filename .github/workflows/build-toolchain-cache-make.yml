@@ -72,8 +72,9 @@ jobs:
           cd amneziawg-openwrt
           make show-env
           make export-env >> $GITHUB_OUTPUT
-          make build-toolchain
-          make build-kernel
+          time -p make build-toolchain
+          time -p make build-kernel
+          make purge-circular-symlinks
 
       - name: save toolchain and kernel cache
         id: cache-tools-kernel-save
