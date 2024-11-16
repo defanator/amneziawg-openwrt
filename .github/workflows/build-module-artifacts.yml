@@ -3,6 +3,9 @@ name: build module artifacts
 on:
   schedule:
     - cron: '30 3 * * 2,6'
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
     inputs:
       openwrt_version:
