@@ -119,9 +119,12 @@ class OpenWrtBuildInfoFetcher:
             subtarget = _jobs[i]["subtarget"]
 
             # BeautifulSoup solution (commented below) takes a while, so use plain regex here
-            packages = re.findall(r'href="(kernel_.*ipk)"', res[i])
+            packages = re.findall(r'href="(kernel[_-].*[ia]pk)"', res[i])
+            logger.debug("kernel packages found: %s", packages)
             for package in packages:
                 logger.debug("%s/%s: found kernel: %s", target, subtarget, package)
+
+                # regular (release) builds
                 m = re.match(
                     r"kernel_\d+\.\d+\.\d+(?:-\d+)?[-~]([a-f0-9]+)(?:-r\d+)?_([a-zA-Z0-9_-]+)\.ipk$",
                     package,
@@ -129,6 +132,17 @@ class OpenWrtBuildInfoFetcher:
                 if m:
                     self.targets[target][subtarget]["vermagic"] = m.group(1)
                     self.targets[target][subtarget]["pkgarch"] = m.group(2)
+                    break
+
+                # snapshot builds
+                m = re.match(
+                    r"kernel-\d+\.\d+\.\d+(?:-\d+)?[-~]([a-f0-9]+)(?:-r\d+)\.apk$",
+                    package,
+                )
+                if m:
+                    self.targets[target][subtarget]["vermagic"] = m.group(1)
+                    # TODO: figure out how to populate this correctly
+                    self.targets[target][subtarget]["pkgarch"] = "none"
                     break
 
             # s = BeautifulSoup(res[i], 'html.parser')

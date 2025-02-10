@@ -24,9 +24,15 @@ FEED_NAME         := amneziawg-opkg-feed-$(GITHUB_REF_NAME)-openwrt-$(OPENWRT_RE
 
 WORKFLOW_REF      ?= $(shell git rev-parse --abbrev-ref HEAD)
 
+ifneq ($(OPENWRT_RELEASE),snapshot)
 OPENWRT_ROOT_URL  ?= https://downloads.openwrt.org/releases
 OPENWRT_BASE_URL  ?= $(OPENWRT_ROOT_URL)/$(OPENWRT_RELEASE)/targets/$(OPENWRT_TARGET)/$(OPENWRT_SUBTARGET)
 OPENWRT_MANIFEST  ?= $(OPENWRT_BASE_URL)/openwrt-$(OPENWRT_RELEASE)-$(OPENWRT_TARGET)-$(OPENWRT_SUBTARGET).manifest
+else
+OPENWRT_ROOT_URL  ?= https://downloads.openwrt.org/snapshots
+OPENWRT_BASE_URL  ?= $(OPENWRT_ROOT_URL)/targets/$(OPENWRT_TARGET)/$(OPENWRT_SUBTARGET)
+OPENWRT_MANIFEST  ?= $(OPENWRT_BASE_URL)/openwrt-$(OPENWRT_TARGET)-$(OPENWRT_SUBTARGET).manifest
+endif
 
 NPROC ?= $(shell getconf _NPROCESSORS_ONLN)
 
@@ -39,7 +45,11 @@ _NEED_VERMAGIC=1
 endif
 
 ifeq ($(_NEED_VERMAGIC), 1)
+ifneq ($(OPENWRT_RELEASE),snapshot)
 OPENWRT_VERMAGIC := $(shell curl -fs $(OPENWRT_MANIFEST) | grep -- "^kernel" | sed -e "s,.*\-,,")
+else
+OPENWRT_VERMAGIC := $(shell curl -fs $(OPENWRT_MANIFEST) | grep -- "^kernel" | sed -e "s,.*\~,," | cut -d '-' -f 1)
+endif
 endif
 
 ifndef USIGN
@@ -138,8 +148,10 @@ $(OPENWRT_SRCDIR):
 	@{ \
 	set -ex ; \
 	git clone https://github.com/openwrt/openwrt.git $@ ; \
-	cd $@ ; \
-	git checkout v$(OPENWRT_RELEASE) ; \
+	if [ "$(OPENWRT_RELEASE)" != "snapshot" ]; then \
+		cd $@ ; \
+		git checkout v$(OPENWRT_RELEASE) ; \
+	fi ; \
 	}
 
 $(OPENWRT_SRCDIR)/feeds.conf: | $(OPENWRT_SRCDIR)

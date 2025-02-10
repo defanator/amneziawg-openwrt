@@ -63,12 +63,21 @@ jobs:
           path: amneziawg-openwrt
           fetch-depth: 0
 
-      - name: checkout openwrt
+      - name: checkout openwrt (tag)
         uses: actions/checkout@v4
+        if: ${{ matrix.build_env.tag != 'snapshot' }}
         with:
           path: openwrt
           repository: openwrt/openwrt
           ref: v${{ matrix.build_env.tag }}
+          fetch-depth: 0
+
+      - name: checkout openwrt (main)
+        uses: actions/checkout@v4
+        if: ${{ matrix.build_env.tag == 'snapshot' }}
+        with:
+          path: openwrt
+          repository: openwrt/openwrt
           fetch-depth: 0
 
       - name: checkout usign
