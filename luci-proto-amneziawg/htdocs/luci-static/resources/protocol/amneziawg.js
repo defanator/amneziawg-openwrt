@@ -7,6 +7,7 @@
 'require form';
 'require network';
 'require validation';
+'require uqr';
 
 var generateKey = rpc.declare({
 	object: 'luci.amneziawg',
@@ -64,42 +65,16 @@ function generateDescription(name, texts) {
 	]);
 }
 
-function invokeQREncode(data, div) {
-	
-	var code = div.children[0];
-	var btn = div.children[1];
-	
-	dom.content(btn, [
-				E('a', {
-					'class': 'btn cbi-button-action',
-					'style': 'text-align: center',
-					'href': 'data:text/plain;charset=utf-8,' + encodeURIComponent(data),
-					'download': 'amneziawg.conf'
-
-				}, ['Download Configuration']),	
-	]);
-	
-	return fs.exec_direct('/usr/bin/qrencode', [
-		'--inline', '--8bit', '--type=SVG',
-		'--output=-', '--', data
-	]).then(function(svg) {
-		div.style.opacity = '';
-		dom.content(code, Object.assign(E(svg), { style: 'width:100%;height:auto' }));
-	}).catch(function(error) {
-		div.style.opacity = '';
-
-		if (L.isObject(error) && error.name == 'NotFoundError') {
-			dom.content(code, [
-				Object.assign(E(qrIcon), { style: 'width:32px;height:32px;opacity:.2' }),
-				E('p', _('The <em>qrencode</em> package is required for generating an QR code image of the configuration.'))
-			]);
-		}
-		else {
-			dom.content(code, [
-				_('Unable to generate QR code: %s').format(L.isObject(error) ? error.message : error)
-			]);
-		}
-	});
+function buildSVGQRCode(data, code) {
+	// pixel size larger than 4 clips right and bottom edges of complex configs
+	const options = {
+		pixelSize: 4,
+		whiteColor: 'white',
+		blackColor: 'black'
+	};
+	const svg = uqr.renderSVG(data, options);
+	code.style.opacity = '';
+	dom.content(code, Object.assign(E(svg), { style: 'width:100%;height:auto' }));
 }
 
 var cbiKeyPairGenerate = form.DummyValue.extend({
@@ -110,9 +85,6 @@ var cbiKeyPairGenerate = form.DummyValue.extend({
 				var prv = this.section.getUIElement(section_id, 'private_key'),
 				    pub = this.section.getUIElement(section_id, 'public_key'),
 				    map = this.map;
-
-				if ((prv.getValue() || pub.getValue()) && !confirm(_('Do you want to replace the current keys?')))
-					return;
 
 				return generateKey().then(function(keypair) {
 					prv.setValue(keypair.priv);
@@ -137,7 +109,7 @@ return network.registerProtocol('amneziawg', {
 		return this._ubus('l3_device') || this.sid;
 	},
 
-	getOpkgPackage: function() {
+	getPackageName: function() {
 		return 'amneziawg-tools';
 	},
 
@@ -212,7 +184,7 @@ return network.registerProtocol('amneziawg', {
 		o.placeholder = '1420';
 		o.optional = true;
 
-		o = s.taboption('advanced', form.Value, 'fwmark', _('Firewall Mark'), _('Optional. 32-bit mark for outgoing encrypted packets. Enter value in hex, starting with <code>0x</code>.'));
+		o = s.taboption('advanced', form.Value, 'fwmark', _('Firewall Mark'), _('Optional. 32-bit mark for packets during firewall processing. Enter value in hex, starting with <code>0x</code>.'));
 		o.optional = true;
 		o.validate = function(section_id, value) {
 			if (value.length > 0 && !value.match(/^0x[a-fA-F0-9]{1,8}$/))
@@ -224,62 +196,102 @@ return network.registerProtocol('amneziawg', {
         // AmneziaWG
 
         try {
-            s.tab('amneziawg', _('AmneziaWG Settings'), _('Further information about AmneziaWG interfaces and peers at <a href=\'http://amnezia.org\'>amnezia.org</a>.'));
+            s.tab('amneziawg', _('AmneziaWG Settings'), _('Further information about AmneziaWG interfaces and peers at <a href=\'https://docs.amnezia.org/documentation/amnezia-wg\'>amnezia.org</a>.'));
         }
         catch(e) {}
 
         o = s.taboption('amneziawg', form.Value, 'awg_jc', _('Jc'), _('Junk packet count.'));
         o.datatype = 'uinteger';
+        o.placeholder = '0';
         o.optional = true;
 
         o = s.taboption('amneziawg', form.Value, 'awg_jmin', _('Jmin'), _('Junk packet minimum size.'));
         o.datatype = 'uinteger';
+        o.placeholder = '0';
         o.optional = true;
 
         o = s.taboption('amneziawg', form.Value, 'awg_jmax', _('Jmax'), _('Junk packet maximum size.'));
         o.datatype = 'uinteger';
+        o.placeholder = '0';
         o.optional = true;
 
         o = s.taboption('amneziawg', form.Value, 'awg_s1', _('S1'), _('Handshake initiation packet junk header size.'));
         o.datatype = 'uinteger';
+        o.placeholder = '0';
         o.optional = true;
 
         o = s.taboption('amneziawg', form.Value, 'awg_s2', _('S2'), _('Handshake response packet junk header size.'));
         o.datatype = 'uinteger';
+        o.placeholder = '0';
+        o.optional = true;
+		
+		o = s.taboption('amneziawg', form.Value, 'awg_s3', _('S3'), _('Cookie reply packet junk header size.'));
+        o.datatype = 'uinteger';
+        o.placeholder = '0';
+        o.optional = true;
+		
+		o = s.taboption('amneziawg', form.Value, 'awg_s4', _('S4'), _('Transport packet junk header size.'));
+        o.datatype = 'uinteger';
+        o.placeholder = '0';
         o.optional = true;
 
         o = s.taboption('amneziawg', form.Value, 'awg_h1', _('H1'), _('Handshake initiation packet type header.'));
-        o.datatype = 'uinteger';
+        o.datatype = 'string';
+        o.placeholder = '1';
         o.optional = true;
 
         o = s.taboption('amneziawg', form.Value, 'awg_h2', _('H2'), _('Handshake response packet type header.'));
-        o.datatype = 'uinteger';
+        o.datatype = 'string';
+        o.placeholder = '2';
         o.optional = true;
 
         o = s.taboption('amneziawg', form.Value, 'awg_h3', _('H3'), _('Handshake cookie packet type header.'));
-        o.datatype = 'uinteger';
+        o.datatype = 'string';
+        o.placeholder = '3';
         o.optional = true;
 
         o = s.taboption('amneziawg', form.Value, 'awg_h4', _('H4'), _('Transport packet type header.'));
-        o.datatype = 'uinteger';
+        o.datatype = 'string';
+        o.placeholder = '4';
+        o.optional = true;
+		
+		o = s.taboption('amneziawg', form.Value, 'awg_i1', _('I1'), _('First special junk packet signature.'));
+        o.datatype = 'string';
+        o.optional = true;
+		
+		o = s.taboption('amneziawg', form.Value, 'awg_i2', _('I2'), _('Second special junk packet signature.'));
+        o.datatype = 'string';
+        o.optional = true;
+		
+		o = s.taboption('amneziawg', form.Value, 'awg_i3', _('I3'), _('Third special junk packet signature.'));
+        o.datatype = 'string';
+        o.optional = true;
+		
+		o = s.taboption('amneziawg', form.Value, 'awg_i4', _('I4'), _('Fourth special junk packet signature.'));
+        o.datatype = 'string';
+        o.optional = true;
+		
+		o = s.taboption('amneziawg', form.Value, 'awg_i5', _('I5'), _('Fifth special junk packet signature.'));
+        o.datatype = 'string';
         o.optional = true;
 
 		// -- peers -----------------------------------------------------------------------
 
 		try {
-			s.tab('peers', _('Peers'), _('Further information about AmneziaWG interfaces and peers at <a href=\'http://amneziawg.com\'>amneziawg.com</a>.'));
+			s.tab('peers', _('Peers'), _('Further information about AmneziaWG interfaces and peers at <a href=\'https://docs.amnezia.org/documentation/amnezia-wg\'>amnezia.org</a>.'));
 		}
 		catch(e) {}
 
 		o = s.taboption('peers', form.SectionValue, '_peers', form.GridSection, 'amneziawg_%s'.format(s.section));
 		o.depends('proto', 'amneziawg');
 
-        ss = o.subsection;
+		ss = o.subsection;
 		ss.anonymous = true;
 		ss.addremove = true;
 		ss.addbtntitle = _('Add peer');
 		ss.nodescriptions = true;
 		ss.modaltitle = _('Edit peer');
+		ss.sortable = true;
 
 		ss.handleDragConfig = function(ev) {
 			ev.stopPropagation();
@@ -416,15 +428,22 @@ return network.registerProtocol('amneziawg', {
 					s.getOption('public_key').getUIElement(s.section).setValue(keypair.pub);
 					s.getOption('listen_port').getUIElement(s.section).setValue(config.interface_listenport || '');
 					s.getOption('addresses').getUIElement(s.section).setValue(config.interface_address);
-                    			s.getOption('awg_jc').getUIElement(s.section).setValue(config.interface_jc);
-					s.getOption('awg_jmin').getUIElement(s.section).setValue(config.interface_jmin);
-                    			s.getOption('awg_jmax').getUIElement(s.section).setValue(config.interface_jmax);
-                    			s.getOption('awg_s1').getUIElement(s.section).setValue(config.interface_s1);
-                    			s.getOption('awg_s2').getUIElement(s.section).setValue(config.interface_s2);
-                    			s.getOption('awg_h1').getUIElement(s.section).setValue(config.interface_h1);
-                    			s.getOption('awg_h2').getUIElement(s.section).setValue(config.interface_h2);
-                    			s.getOption('awg_h3').getUIElement(s.section).setValue(config.interface_h3);
-                    			s.getOption('awg_h4').getUIElement(s.section).setValue(config.interface_h4);
+					s.getOption('awg_jc').getUIElement(s.section).setValue(config.interface_jc || '');
+					s.getOption('awg_jmin').getUIElement(s.section).setValue(config.interface_jmin || '');
+					s.getOption('awg_jmax').getUIElement(s.section).setValue(config.interface_jmax || '');
+					s.getOption('awg_s1').getUIElement(s.section).setValue(config.interface_s1 || '');
+					s.getOption('awg_s2').getUIElement(s.section).setValue(config.interface_s2 || '');
+					s.getOption('awg_s3').getUIElement(s.section).setValue(config.interface_s3 || '');
+					s.getOption('awg_s4').getUIElement(s.section).setValue(config.interface_s4 || '');
+					s.getOption('awg_h1').getUIElement(s.section).setValue(config.interface_h1 || '');
+					s.getOption('awg_h2').getUIElement(s.section).setValue(config.interface_h2 || '');
+					s.getOption('awg_h3').getUIElement(s.section).setValue(config.interface_h3 || '');
+					s.getOption('awg_h4').getUIElement(s.section).setValue(config.interface_h4 || '');
+					s.getOption('awg_i1').getUIElement(s.section).setValue(config.interface_i1 || '');
+					s.getOption('awg_i2').getUIElement(s.section).setValue(config.interface_i2 || '');
+					s.getOption('awg_i3').getUIElement(s.section).setValue(config.interface_i3 || '');
+					s.getOption('awg_i4').getUIElement(s.section).setValue(config.interface_i4 || '');
+					s.getOption('awg_i5').getUIElement(s.section).setValue(config.interface_i5 || '');
 
 					if (config.interface_dns)
 						s.getOption('dns').getUIElement(s.section).setValue(config.interface_dns);
@@ -500,7 +519,7 @@ return network.registerProtocol('amneziawg', {
 					E('p', _('Drag or paste a valid <em>*.conf</em> file below to configure the local AmneziaWG interface.'))
 				] : [
 					E('p', _('Paste or drag a AmneziaWG configuration (commonly <em>wg0.conf</em>) from another system below to create a matching peer entry allowing that system to connect to the local AmneziaWG interface.')),
-					E('p', _('To fully configure the local AmneziaWG interface from an existing (e.g. provider supplied) configuration file, use the <strong><a class="full-import" href="#">configuration import</a></strong> instead.'))
+					E('p', _('To configure fully the local AmneziaWG interface from an existing (e.g. provider supplied) configuration file, use the <strong><a class="full-import" href="#">configuration import</a></strong> instead.'))
 				]),
 				E('p', [
 					E('textarea', {
@@ -575,9 +594,10 @@ return network.registerProtocol('amneziawg', {
 			return E('em', _('No peers defined yet.'));
 		};
 
-		o = ss.option(form.Flag, 'disabled', _('Peer disabled'), _('Enable / Disable peer. Restart amneziawg interface to apply changes.'));
-		o.modalonly = true;
+		o = ss.option(form.Flag, 'disabled', _('Disabled'), _('Enable / Disable peer. Restart amneziawg interface to apply changes.'));
+		o.editable = true;
 		o.optional = true;
+		o.width = '5%';
 
 		o = ss.option(form.Value, 'description', _('Description'), _('Optional. Description of peer.'));
 		o.placeholder = 'My Peer';
@@ -675,9 +695,6 @@ return network.registerProtocol('amneziawg', {
 					var psk = this.section.getUIElement(section_id, 'preshared_key'),
 					    map = this.map;
 
-					if (psk.getValue() && !confirm(_('Do you want to replace the current PSK?')))
-						return;
-
 					return generatePsk().then(function(key) {
 						psk.setValue(key);
 						map.save(null, true);
@@ -757,69 +774,78 @@ return network.registerProtocol('amneziawg', {
 
 		o.modalonly = true;
 
-	        o.createPeerConfig = function (section_id, endpoint, ips, eips, dns) {
+		o.createPeerConfig = function(section_id, endpoint, ips, eips, dns) {
 			var pub = s.formvalue(s.section, 'public_key'),
-			port = s.formvalue(s.section, 'listen_port') || '51820',
-			prv = this.section.formvalue(section_id, 'private_key'),
-			psk = this.section.formvalue(section_id, 'preshared_key'),
-			eport = this.section.formvalue(section_id, 'endpoint_port'),
-			keep = this.section.formvalue(section_id, 'persistent_keepalive'),
-			jc = s.formvalue(s.section, 'awg_jc'),
-			jmin = s.formvalue(s.section, 'awg_jmin'),
-			jmax = s.formvalue(s.section, 'awg_jmax'),
-			s1 = s.formvalue(s.section, 'awg_s1'),
-			s2 = s.formvalue(s.section, 'awg_s2'),
-			h1 = s.formvalue(s.section, 'awg_h1'),
-			h2 = s.formvalue(s.section, 'awg_h2'),
-			h3 = s.formvalue(s.section, 'awg_h3'),
-			h4 = s.formvalue(s.section, 'awg_h4');		
-				
+			    port = s.formvalue(s.section, 'listen_port') || '51820',
+				jc = s.formvalue(s.section, 'awg_jc'),
+				jmin = s.formvalue(s.section, 'awg_jmin'),
+				jmax = s.formvalue(s.section, 'awg_jmax'),
+				s1 = s.formvalue(s.section, 'awg_s1'),
+				s2 = s.formvalue(s.section, 'awg_s2'),
+				s3 = s.formvalue(s.section, 'awg_s3'),
+				s4 = s.formvalue(s.section, 'awg_s4'),
+				h1 = s.formvalue(s.section, 'awg_h1'),
+				h2 = s.formvalue(s.section, 'awg_h2'),
+				h3 = s.formvalue(s.section, 'awg_h3'),
+				h4 = s.formvalue(s.section, 'awg_h4'),
+				i1 = s.formvalue(s.section, 'awg_i1'),
+				i2 = s.formvalue(s.section, 'awg_i2'),
+				i3 = s.formvalue(s.section, 'awg_i3'),
+				i4 = s.formvalue(s.section, 'awg_i4'),
+				i5 = s.formvalue(s.section, 'awg_i5'),
+			    prv = this.section.formvalue(section_id, 'private_key'),
+			    psk = this.section.formvalue(section_id, 'preshared_key'),
+			    eport = this.section.formvalue(section_id, 'endpoint_port'),
+			    keep = this.section.formvalue(section_id, 'persistent_keepalive');
+
+			// If endpoint is IPv6 we must escape it with []
 			if (endpoint.indexOf(':') > 0) {
-			endpoint = '[' + endpoint + ']';
+				endpoint = '['+endpoint+']';
 			}
-			var configLines = [
+
+			return [
 				'[Interface]',
 				'PrivateKey = ' + prv,
-				eport ? 'ListenPort = ' + eport : '# ListenPort not defined',
 				eips && eips.length ? 'Address = ' + eips.join(', ') : '# Address not defined',
+				eport ? 'ListenPort = ' + eport : '# ListenPort not defined',
 				dns && dns.length ? 'DNS = ' + dns.join(', ') : '# DNS not defined',
-				''
-			];
-	
-			if (jc) configLines.push('jc = ' + jc);
-			if (jmin) configLines.push('jmin = ' + jmin);
-			if (jmax) configLines.push('jmax = ' + jmax);
-			if (s1) configLines.push('s1 = ' + s1);
-			if (s2) configLines.push('s2 = ' + s2);
-			if (h1) configLines.push('h1 = ' + h1);
-			if (h2) configLines.push('h2 = ' + h2);
-			if (h3) configLines.push('h3 = ' + h3);
-			if (h4) configLines.push('h4 = ' + h4);
-	
-			configLines.push(
+				jc ? 'Jc = ' + jc : '# Jc not defined',
+				jmin ? 'Jmin = ' + jmin : '# Jmin not defined',
+				jmax ? 'Jmax = ' + jmax : '# Jmax not defined',
+				s1 ? 'S1 = ' + s1 : '# S1 not defined',
+				s2 ? 'S2 = ' + s2 : '# S2 not defined',
+				s3 ? 'S3 = ' + s3 : '# S3 not defined',
+				s4 ? 'S4 = ' + s4 : '# S4 not defined',
+				h1 ? 'H1 = ' + h1 : '# H1 not defined',
+				h2 ? 'H2 = ' + h2 : '# H2 not defined',
+				h3 ? 'H3 = ' + h3 : '# H3 not defined',
+				h4 ? 'H4 = ' + h4 : '# H4 not defined',
+				i1 ? 'I1 = ' + i1 : '# I1 not defined',
+				i2 ? 'I2 = ' + i2 : '# I2 not defined',
+				i3 ? 'I3 = ' + i3 : '# I3 not defined',
+				i4 ? 'I4 = ' + i4 : '# I4 not defined',
+				i5 ? 'I5 = ' + i5 : '# I5 not defined',
 				'',
 				'[Peer]',
 				'PublicKey = ' + pub,
 				psk ? 'PresharedKey = ' + psk : '# PresharedKey not used',
 				ips && ips.length ? 'AllowedIPs = ' + ips.join(', ') : '# AllowedIPs not defined',
 				endpoint ? 'Endpoint = ' + endpoint + ':' + port : '# Endpoint not defined',
-				keep ? 'PersistentKeepAlive = ' + keep : '# PersistentKeepAlive not defined',
-				''
-			);
-	
-			return configLines.join('\n');
-	        };
+				keep ? 'PersistentKeepAlive = ' + keep : '# PersistentKeepAlive not defined'
+			].join('\n');
+		};
 
 		o.handleGenerateQR = function(section_id, ev) {
 			var mapNode = ss.getActiveModalMap(),
-				headNode = mapNode.parentNode.querySelector('h4'),
-				configGenerator = this.createPeerConfig.bind(this, section_id),
-				parent = this.map,
+			    headNode = mapNode.parentNode.querySelector('h4'),
+			    configGenerator = this.createPeerConfig.bind(this, section_id),
+			    parent = this.map,
 				eips = this.section.formvalue(section_id, 'allowed_ips');
 
 			return Promise.all([
 				network.getWANNetworks(),
 				network.getWAN6Networks(),
+				network.getNetwork('lan'),
 				L.resolveDefault(uci.load('ddns')),
 				L.resolveDefault(uci.load('system')),
 				parent.save(null, true)
@@ -827,12 +853,12 @@ return network.registerProtocol('amneziawg', {
 				var hostnames = [];
 
 				uci.sections('ddns', 'service', function(s) {
-					if (typeof(s.lookup_host) == 'string' && s.enabled == '1')
+					if (typeof(s?.lookup_host) == 'string' && s?.enabled == '1')
 						hostnames.push(s.lookup_host);
 				});
 
 				uci.sections('system', 'system', function(s) {
-					if (typeof(s.hostname) == 'string' && s.hostname.indexOf('.') > 0)
+					if (typeof(s?.hostname) == 'string' && s?.hostname?.indexOf('.') > 0)
 						hostnames.push(s.hostname);
 				});
 
@@ -846,34 +872,34 @@ return network.registerProtocol('amneziawg', {
 
 				var dns = [];
 
+				var lan = data[2];
+				if (lan) {
+					var lanIp = lan.getIPAddr();
+					if (lanIp) {
+						dns.unshift(lanIp)
+					}
+				}
+
 				var qrm, qrs, qro;
 
-				qrm = new form.JSONMap({
-		                    config: {
-		                        endpoint: hostnames[0],
-		                        allowed_ips: ips,
-					addresses: eips,
-					dns_servers: dns
-		                    }
-		                }, null, _('The generated configuration can be imported into a AmneziaWG client application to set up a connection towards this device.'));
-				
+				qrm = new form.JSONMap({ config: { endpoint: hostnames[0], allowed_ips: ips, addresses: eips, dns_servers: dns } }, null, _('The generated configuration can be imported into a WireGuard client application to set up a connection towards this device.'));
 				qrm.parent = parent;
 
 				qrs = qrm.section(form.NamedSection, 'config');
 
 				function handleConfigChange(ev, section_id, value) {
 					var code = this.map.findElement('.qr-code'),
-					conf = this.map.findElement('.client-config'),
-					endpoint = this.section.getUIElement(section_id, 'endpoint'),
-					ips = this.section.getUIElement(section_id, 'allowed_ips');
-					eips = this.section.getUIElement(section_id, 'addresses');
-					dns = this.section.getUIElement(section_id, 'dns_servers');					
+					    conf = this.map.findElement('.client-config'),
+					    endpoint = this.section.getUIElement(section_id, 'endpoint'),
+					    ips = this.section.getUIElement(section_id, 'allowed_ips');
+					    eips = this.section.getUIElement(section_id, 'addresses');
+					    dns = this.section.getUIElement(section_id, 'dns_servers');
 
 					if (this.isValid(section_id)) {
 						conf.firstChild.data = configGenerator(endpoint.getValue(), ips.getValue(), eips.getValue(), dns.getValue());
 						code.style.opacity = '.5';
 
-						invokeQREncode(conf.firstChild.data, code);
+						buildSVGQRCode(conf.firstChild.data, code);
 					}
 				};
 
@@ -897,7 +923,7 @@ return network.registerProtocol('amneziawg', {
 				qro.datatype = 'ipaddr';
 				qro.default = eips;
 				eips.forEach(function(eip) { qro.value(eip) });
-				qro.onchange = handleConfigChange;				
+				qro.onchange = handleConfigChange;
 
 				qro = qrs.option(form.DummyValue, 'output');
 				qro.renderWidget = function() {
@@ -908,16 +934,9 @@ return network.registerProtocol('amneziawg', {
 					}, [
 						E('div', {
 							'class': 'qr-code',
-							'style': 'display:flex; flex-direction: column; text-align: center',
+							'style': 'width:320px;flex:0 1 320px;text-align:center'
 						}, [
-							E('div', {
-								'style': 'width:320px;flex:0 1 320px;text-align:center'
-							}, [
-								E('em', { 'class': 'spinning' }, [ _('Generating QR code…') ])
-							]),
-							
-							E('div', {
-							}, ['Download Configuration']),	
+							E('em', { 'class': 'spinning' }, [ _('Generating QR code…') ])
 						]),
 						E('pre', {
 							'class': 'client-config',
@@ -934,7 +953,7 @@ return network.registerProtocol('amneziawg', {
 						}, [ peer_config ])
 					]);
 
-					invokeQREncode(peer_config, node.firstChild);
+					buildSVGQRCode(peer_config, node.firstChild);
 
 					return node;
 				};
