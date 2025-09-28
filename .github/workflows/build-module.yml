@@ -105,13 +105,17 @@ jobs:
             exit 1
           fi
           
+          # Get absolute paths
+          WORKSPACE_DIR=$(pwd)
+          SDK_FULL_PATH="$WORKSPACE_DIR/$SDK_DIR"
+          
           cd "$SDK_DIR"
           
-          # Copy current repository packages to SDK
+          # Copy current repository packages to SDK using absolute paths
           mkdir -p feeds/awgopenwrt
-          cp -r ../../kmod-amneziawg feeds/awgopenwrt/
-          cp -r ../../amneziawg-tools feeds/awgopenwrt/
-          cp -r ../../luci-proto-amneziawg feeds/awgopenwrt/
+          cp -r "$WORKSPACE_DIR/kmod-amneziawg" feeds/awgopenwrt/
+          cp -r "$WORKSPACE_DIR/amneziawg-tools" feeds/awgopenwrt/
+          cp -r "$WORKSPACE_DIR/luci-proto-amneziawg" feeds/awgopenwrt/
           
           # Create feed index
           echo "src-link awgopenwrt $(pwd)/feeds/awgopenwrt" >> feeds.conf.default
