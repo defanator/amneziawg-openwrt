@@ -107,9 +107,12 @@ jobs:
           
           # Get absolute paths
           WORKSPACE_DIR=$(pwd)
-          SDK_FULL_PATH="$WORKSPACE_DIR/$SDK_DIR"
           
           cd "$SDK_DIR"
+          
+          # Update feeds to include LuCI
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
           
           # Copy current repository packages directly to package directory
           cp -r "$WORKSPACE_DIR/kmod-amneziawg" package/
@@ -145,6 +148,9 @@ jobs:
           echo "Building amneziawg-tools..."
           make package/amneziawg-tools/{download,prepare} V=s
           make package/amneziawg-tools/compile V=s
+          
+          echo "Build completed. Checking for built packages..."
+          find bin/ -name "*.ipk" | grep -E "(amneziawg|luci-proto-amneziawg)" | head -10
 
       - name: Prepare artifacts
         run: |
