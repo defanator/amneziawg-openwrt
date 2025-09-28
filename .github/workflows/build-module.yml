@@ -111,16 +111,10 @@ jobs:
           
           cd "$SDK_DIR"
           
-          # Copy current repository packages to SDK using absolute paths
-          mkdir -p feeds/awgopenwrt
-          cp -r "$WORKSPACE_DIR/kmod-amneziawg" feeds/awgopenwrt/
-          cp -r "$WORKSPACE_DIR/amneziawg-tools" feeds/awgopenwrt/
-          cp -r "$WORKSPACE_DIR/luci-proto-amneziawg" feeds/awgopenwrt/
-          
-          # Create feed index
-          echo "src-link awgopenwrt $(pwd)/feeds/awgopenwrt" >> feeds.conf.default
-          ./scripts/feeds update awgopenwrt
-          ./scripts/feeds install -a -p awgopenwrt
+          # Copy current repository packages directly to package directory
+          cp -r "$WORKSPACE_DIR/kmod-amneziawg" package/
+          cp -r "$WORKSPACE_DIR/amneziawg-tools" package/
+          cp -r "$WORKSPACE_DIR/luci-proto-amneziawg" package/
           
           # Configure packages to build
           echo "CONFIG_PACKAGE_kmod-amneziawg=m" > .config
