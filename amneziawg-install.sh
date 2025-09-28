@@ -38,7 +38,7 @@ install_awg_packages() {
         opkg install "$AWG_DIR/$KMOD_AMNEZIAWG_FILENAME"
 
         if [ $? -eq 0 ]; then
-            echo "kmod-amneziawg file downloaded successfully"
+            echo "kmod-amneziawg installed successfully"
         else
             echo "Error installing kmod-amneziawg. Please, install kmod-amneziawg manually and run the script again"
             exit 1
@@ -62,7 +62,7 @@ install_awg_packages() {
         opkg install "$AWG_DIR/$AMNEZIAWG_TOOLS_FILENAME"
 
         if [ $? -eq 0 ]; then
-            echo "amneziawg-tools file downloaded successfully"
+            echo "amneziawg-tools installed successfully"
         else
             echo "Error installing amneziawg-tools. Please, install amneziawg-tools manually and run the script again"
             exit 1
@@ -86,11 +86,40 @@ install_awg_packages() {
         opkg install "$AWG_DIR/$LUCI_APP_AMNEZIAWG_FILENAME"
 
         if [ $? -eq 0 ]; then
-            echo "luci-proto-amneziawg file downloaded successfully"
+            echo "luci-proto-amneziawg installed successfully"
         else
             echo "Error installing luci-proto-amneziawg. Please, install luci-proto-amneziawg manually and run the script again"
             exit 1
         fi
+    fi
+
+    # Ask about Russian localization
+    printf "\033[32;1mУстанавливаем пакет с русской локализацией? Install Russian language pack? (y/n) [n]: \033[0m\n"
+    read INSTALL_RU_LANG
+    INSTALL_RU_LANG=${INSTALL_RU_LANG:-n}
+
+    if [ "$INSTALL_RU_LANG" = "y" ] || [ "$INSTALL_RU_LANG" = "Y" ]; then
+        if opkg list-installed | grep -q luci-i18n-amneziawg-ru; then
+            echo "luci-i18n-amneziawg-ru already installed"
+        else
+            LUCI_I18N_AMNEZIAWG_RU_FILENAME="luci-i18n-amneziawg-ru${PKGPOSTFIX}"
+            DOWNLOAD_URL="${BASE_URL}v${VERSION}/${LUCI_I18N_AMNEZIAWG_RU_FILENAME}"
+            wget -O "$AWG_DIR/$LUCI_I18N_AMNEZIAWG_RU_FILENAME" "$DOWNLOAD_URL"
+
+            if [ $? -eq 0 ]; then
+                echo "luci-i18n-amneziawg-ru file downloaded successfully"
+                opkg install "$AWG_DIR/$LUCI_I18N_AMNEZIAWG_RU_FILENAME"
+                if [ $? -eq 0 ]; then
+                    echo "luci-i18n-amneziawg-ru installed successfully"
+                else
+                    echo "Warning: Error installing luci-i18n-amneziawg-ru (non-critical)"
+                fi
+            else
+                echo "Warning: Russian localization not available for this version/platform (non-critical)"
+            fi
+        fi
+    else
+        printf "\033[32;1mSkipping Russian language pack installation.\033[0m\n"
     fi
 
     rm -rf "$AWG_DIR"
