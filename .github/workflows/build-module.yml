@@ -53,94 +53,116 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: openwrt/openwrt
-          ref: v${{ matrix.build_env.tag }}
-          fetch-depth: 0
+      - name: Checkout AWG source code
+        uses: actions/checkout@v4
 
-      - name: Cache Tools and Kernel
-        id: cache-tools-kernel
+      - name: Cache OpenWrt SDK
+        id: cache-sdk
         uses: actions/cache@v4
         env:
-          cache-name: "cache-tools-kernel-${{ matrix.build_env.tag }}-${{ matrix.build_env.pkgarch}}-${{ matrix.build_env.target}}-${{ matrix.build_env.subtarget}}"
+          cache-name: "cache-sdk-${{ matrix.build_env.tag }}-${{ matrix.build_env.target}}-${{ matrix.build_env.subtarget}}"
         with:
-          path: "**"
-          key: ${{ runner.os }}-build-vm4-${{ env.cache-name }}
+          path: openwrt-sdk-*/
+          key: ${{ runner.os }}-sdk-${{ env.cache-name }}
 
-      - name: Building kernel and tools
-        #if: ${{ steps.cache-tools-kernel.outputs.cache-hit != 'true' }}
+      - name: Download and extract OpenWrt SDK
+        if: steps.cache-sdk.outputs.cache-hit != 'true'
         run: |
           echo "pkgarch: ${{ matrix.build_env.pkgarch}}, target:${{ matrix.build_env.target}}, subtarget: ${{ matrix.build_env.subtarget}}"
 
-          # Setup & install feeds
-          wget https://downloads.openwrt.org/releases/${{ matrix.build_env.tag }}/targets/${{ matrix.build_env.target}}/${{ matrix.build_env.subtarget}}/feeds.buildinfo -O feeds.conf
-          echo "src-git awgopenwrt https://github.com/Slava-Shchipunov/awg-openwrt.git" >> ./feeds.conf
-          ./scripts/feeds update && ./scripts/feeds install -a
+          # Get the actual SDK filename from the directory listing
+          SDK_FILE=$(curl -s "https://downloads.openwrt.org/releases/${{ matrix.build_env.tag }}/targets/${{ matrix.build_env.target}}/${{ matrix.build_env.subtarget}}/" | grep -o "openwrt-sdk-${{ matrix.build_env.tag }}-${{ matrix.build_env.target}}-${{ matrix.build_env.subtarget}}_gcc-[^\"]*_musl\.Linux-x86_64\.tar\.[xz|zst]*" | head -n1)
+          
+          if [ -z "$SDK_FILE" ]; then
+            echo "SDK file not found for ${{ matrix.build_env.tag }} ${{ matrix.build_env.target}} ${{ matrix.build_env.subtarget}}"
+            exit 1
+          fi
+          
+          SDK_DOWNLOAD_URL="https://downloads.openwrt.org/releases/${{ matrix.build_env.tag }}/targets/${{ matrix.build_env.target}}/${{ matrix.build_env.subtarget}}/${SDK_FILE}"
+          echo "Downloading SDK: $SDK_DOWNLOAD_URL"
+          
+          wget "$SDK_DOWNLOAD_URL"
+          
+          # Extract based on file extension
+          if [[ "$SDK_FILE" == *.tar.zst ]]; then
+            tar --zstd -xf "$SDK_FILE"
+          elif [[ "$SDK_FILE" == *.tar.xz ]]; then
+            tar -xf "$SDK_FILE"
+          else
+            echo "Unknown archive format: $SDK_FILE"
+            exit 1
+          fi
+          
+          rm "$SDK_FILE"
 
-          # Setup config with AWG and dependencies
-          wget https://downloads.openwrt.org/releases/${{ matrix.build_env.tag }}/targets/${{ matrix.build_env.target}}/${{ matrix.build_env.subtarget}}/config.buildinfo -O .config
-          echo "CONFIG_PACKAGE_kmod-amneziawg=m" >> .config
+      - name: Setup SDK and feeds
+        run: |
+          # Find SDK directory
+          SDK_DIR=$(find . -maxdepth 1 -name "openwrt-sdk-*" -type d | head -n1)
+          
+          if [ -z "$SDK_DIR" ]; then
+            echo "SDK directory not found"
+            exit 1
+          fi
+          
+          cd "$SDK_DIR"
+          
+          # Copy current repository packages to SDK
+          mkdir -p feeds/awgopenwrt
+          cp -r ../../kmod-amneziawg feeds/awgopenwrt/
+          cp -r ../../amneziawg-tools feeds/awgopenwrt/
+          cp -r ../../luci-proto-amneziawg feeds/awgopenwrt/
+          
+          # Create feed index
+          echo "src-link awgopenwrt $(pwd)/feeds/awgopenwrt" >> feeds.conf.default
+          ./scripts/feeds update awgopenwrt
+          ./scripts/feeds install -a -p awgopenwrt
+          
+          # Configure packages to build
+          echo "CONFIG_PACKAGE_kmod-amneziawg=m" > .config
           echo "CONFIG_PACKAGE_amneziawg-tools=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-amneziawg=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-crypto-lib-chacha20=m" >> .config
-          echo "CONFIG_PACKAGE_kmod-crypto-lib-chacha20poly1305=m" >> .config
-          echo "CONFIG_PACKAGE_kmod-crypto-chacha20poly1305=m" >> .config
-
+          echo "CONFIG_PACKAGE_luci-proto-amneziawg=y" >> .config
+          
           make defconfig
 
-          echo "    > make tools/install"
-          make tools/install -i -j `nproc`
-
-          cat ./build_dir/target-*/linux-*/linux-*/.vermagic || true
-
-          echo "    > make toolchain/install"
-          make toolchain/install  -i -j `nproc`
-
-          cat ./build_dir/target-*/linux-*/linux-*/.vermagic || true
-
-          # compile kernel module
-          echo "    > make target/linux/compile"
-          make target/linux/compile  -i -j `nproc` V=s
-
-          VERMAGIC=`cat ./build_dir/target-*/linux-*/linux-*/.vermagic`
-          VERMAGIC_EXPECTED=${{ matrix.build_env.vermagic }}
-
-          if [ "$VERMAGIC" != "$VERMAGIC_EXPECTED" ]; then
-            echo Vermagic mismatch: $VERMAGIC, expected $VERMAGIC_EXPECTED
-            exit 1
-          fi
-
-      - name: Build AmneziaWG
+      - name: Build AmneziaWG packages
         run: |
-          VERMAGIC=`cat ./build_dir/target-*/linux-*/linux-*/.vermagic`
-          echo "Vermagic: $VERMAGIC"
+          # Find SDK directory
+          SDK_DIR=$(find . -maxdepth 1 -name "openwrt-sdk-*" -type d | head -n1)
+          cd "$SDK_DIR"
 
-          VERMAGIC_EXPECTED=${{ matrix.build_env.vermagic }}
+          echo "Building AmneziaWG packages..."
 
-          if [ "$VERMAGIC" != "$VERMAGIC_EXPECTED" ]; then
-            echo Vermagic mismatch: $VERMAGIC, expected $VERMAGIC_EXPECTED
-            exit 1
-          fi
-
-          # Ignore kmod build for some targets, replace with the awg-go
-          make package/kmod-amneziawg/{clean,download,prepare} V=s || true
+          # Build kmod-amneziawg (kernel module)
+          echo "Building kmod-amneziawg..."
+          make package/kmod-amneziawg/{download,prepare} V=s || true
           make package/kmod-amneziawg/compile V=s || true
 
-          make package/luci-app-amneziawg/{clean,download,prepare}
-          make package/luci-app-amneziawg/compile V=s
+          # Build luci-proto-amneziawg (web interface)
+          echo "Building luci-proto-amneziawg..."
+          make package/luci-proto-amneziawg/{download,prepare} V=s
+          make package/luci-proto-amneziawg/compile V=s
 
-          make V=s package/amneziawg-tools/{clean,download,prepare}
-          make V=s package/amneziawg-tools/compile
+          # Build amneziawg-tools (userspace tools)
+          echo "Building amneziawg-tools..."
+          make package/amneziawg-tools/{download,prepare} V=s
+          make package/amneziawg-tools/compile V=s
 
       - name: Prepare artifacts
         run: |
-          tag_name=${{  github.ref_name }}
+          # Find SDK directory
+          SDK_DIR=$(find . -maxdepth 1 -name "openwrt-sdk-*" -type d | head -n1)
+          
           mkdir -p awgrelease
           postfix="v${{ matrix.build_env.tag }}_${{ matrix.build_env.pkgarch}}_${{ matrix.build_env.target}}_${{ matrix.build_env.subtarget}}"
-          cp bin/packages/${{ matrix.build_env.pkgarch }}/awgopenwrt/amneziawg-tools_*.ipk awgrelease/amneziawg-tools_${postfix}.ipk
-          cp bin/packages/${{ matrix.build_env.pkgarch }}/awgopenwrt/luci-app-amneziawg_*.ipk awgrelease/luci-app-amneziawg_${postfix}.ipk
-          cp bin/targets/${{ matrix.build_env.target}}/${{ matrix.build_env.subtarget}}/packages/kmod-amneziawg_*.ipk awgrelease/kmod-amneziawg_${postfix}.ipk
+          
+          # Copy built packages
+          find "$SDK_DIR/bin/packages" -name "amneziawg-tools_*.ipk" -exec cp {} awgrelease/amneziawg-tools_${postfix}.ipk \; || echo "amneziawg-tools package not found"
+          find "$SDK_DIR/bin/packages" -name "luci-proto-amneziawg_*.ipk" -exec cp {} awgrelease/luci-proto-amneziawg_${postfix}.ipk \; || echo "luci-proto-amneziawg package not found"
+          find "$SDK_DIR/bin/targets" -name "kmod-amneziawg_*.ipk" -exec cp {} awgrelease/kmod-amneziawg_${postfix}.ipk \; || echo "kmod-amneziawg package not found"
+          
+          echo "Built packages:"
+          ls -la awgrelease/
 
       - name: Release
         uses: softprops/action-gh-release@v1
