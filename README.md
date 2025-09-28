@@ -16,15 +16,15 @@ sh <(wget -O - https://raw.githubusercontent.com/Slava-Shchipunov/awg-openwrt/re
 4) [23.05.3](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v23.05.3)
 5) [23.05.4](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v23.05.4)
 6) [23.05.5](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v23.05.5)
-
-И собрал пакеты для популярных устройств для OpenWRT [SNAPSHOT](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/SNAPSHOT)
+7) [23.05.6](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v23.05.6)
+8) [24.10.0](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.0)
+9) [24.10.1](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.1)
+10) [24.10.2](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.2)
+11) [24.10.3](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.3)
 
 Также запускал сборку для версии [22.03.7](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v22.03.7), но там для двух платформ сборка завершилась ошибкой. Так как это достаточно старая версия OpenWRT, я не стал разбираться, в чем проблема.
 
 В дальнейшем при выходе новых релизов OpenWRT будут автоматически создаваться релизы с пакетами AmneziaWG и запускаться сборка пакетов под все устройства, поддерживаемые новой версией. Github action для проверки появления нового релиза запускается автоматически раз в 3 дня, а также может быть запущен вручную.
-
-## Автоматическая сборка пакетов для SNAPSHOT версии
-В репозитории настроен github action, который запускается каждые 4 часа и проверяет [страницу снапшотов](https://downloads.openwrt.org/snapshots/targets/) сайта OpenWRT. При этом, если для какой-то платформы обнаруживается снапшот с более новой версией ядра, запускается сборка пакетов под эту платформу, а новые файлы заменяют старые. В целях экономии ресурсов и ускорения процесса сборки, пакеты собираются только для популярных платформ, которые указаны в массиве `SNAPSHOT_SUBTARGETS_TO_BUILD` в файле index.js.
 
 ## Выбор пакетов для своего устройства
 В соответствии с пунктом [Указываем переменные для сборки](https://github.com/itdoginfo/domain-routing-openwrt/wiki/Amnezia-WG-Build#%D1%83%D0%BA%D0%B0%D0%B7%D1%8B%D0%B2%D0%B0%D0%B5%D0%BC-%D0%BF%D0%B5%D1%80%D0%B5%D0%BC%D0%B5%D0%BD%D0%BD%D1%8B%D0%B5-%D0%B4%D0%BB%D1%8F-%D1%81%D0%B1%D0%BE%D1%80%D0%BA%D0%B8)
