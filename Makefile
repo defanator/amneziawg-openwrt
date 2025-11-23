@@ -47,11 +47,17 @@ ifeq ($(OPENWRT_VERMAGIC), auto)
 _NEED_VERMAGIC=1
 endif
 
+OPENWRT_RELEASE_NUM := $(shell echo $(OPENWRT_RELEASE) | awk -F. '{printf "%02d%02d%02d", $$1, $$2, $$3}')
+
 ifeq ($(_NEED_VERMAGIC), 1)
-ifneq ($(OPENWRT_RELEASE),snapshot)
-OPENWRT_VERMAGIC := $(shell curl -fs $(OPENWRT_MANIFEST) | grep -- "^kernel" | sed -e "s,.*\-,,")
-else
+ifeq ($(OPENWRT_RELEASE), snapshot)
 OPENWRT_VERMAGIC := $(shell curl -fs $(OPENWRT_MANIFEST) | grep -- "^kernel" | sed -e "s,.*\~,," | cut -d '-' -f 1)
+else
+ifeq ($(shell [ $(OPENWRT_RELEASE_NUM) -ge 240000 ] && echo true || echo false), true)
+OPENWRT_VERMAGIC := $(shell curl -fs $(OPENWRT_MANIFEST) | grep -- "^kernel" | sed -e "s,.*\~,," | cut -d '-' -f 1)
+else
+OPENWRT_VERMAGIC := $(shell curl -fs $(OPENWRT_MANIFEST) | grep -- "^kernel" | sed -e "s,.*\-,,")
+endif
 endif
 endif
 
@@ -85,6 +91,7 @@ SHOW_ENV_VARS = \
 	GITHUB_REF_NAME \
 	WORKFLOW_REF \
 	OPENWRT_RELEASE \
+	OPENWRT_RELEASE_NUM \
 	OPENWRT_ARCH \
 	OPENWRT_TARGET \
 	OPENWRT_SUBTARGET \

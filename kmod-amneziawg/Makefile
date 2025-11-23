@@ -3,8 +3,17 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=kmod-amneziawg
-PKG_VERSION:=1.0.20241112
+PKG_VERSION:=1.0.20251104
 PKG_RELEASE:=1
+
+PKG_SOURCE_PROTO:=git
+PKG_SOURCE_URL:=https://github.com/amnezia-vpn/amneziawg-linux-kernel-module.git
+# commit 866b0abe820d5a9c115fe3e4221132ecf8e39b94 (HEAD -> master, tag: v1.0.20251104, upstream/master, upstream/HEAD, origin/master, origin/HEAD)
+# Author: Yaroslav Gurov <ygurov@proton.me>
+# Date:   Sat Oct 25 13:13:24 2025 +0000
+PKG_SOURCE_VERSION:=866b0abe820d5a9c115fe3e4221132ecf8e39b94
+PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
+MAKE_PATH:=src
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -15,7 +24,7 @@ define KernelPackage/amneziawg
 	URL:=https://amnezia.org/
 	MAINTAINER:=Amnezia Admin <admin@amnezia.org>
 	TITLE:=AmneziaWG Kernel Module
-	FILES:=$(PKG_BUILD_DIR)/amneziawg.ko
+	FILES:=$(PKG_BUILD_DIR)/$(MAKE_PATH)/amneziawg.ko
 	DEPENDS:= \
 		+kmod-udptunnel4 \
 		+kmod-udptunnel6 \
@@ -24,21 +33,17 @@ define KernelPackage/amneziawg
 endef
 
 define Build/Prepare
-	cp -fr $(LINUX_DIR)/drivers/net/wireguard/{*.c,*.h,selftest/} $(PKG_BUILD_DIR)
-	mkdir -p $(PKG_BUILD_DIR)/uapi
-	cp -f $(LINUX_DIR)/include/uapi/linux/wireguard.h $(PKG_BUILD_DIR)/uapi/
-	for patch in $$$$(find files/ -type f -name "*.patch" | sort); do \
-		echo "===> applying $$$${patch}" ; \
-		patch -d $(PKG_BUILD_DIR)/ -F3 -t -p0 -i "$$$$(pwd)/$$$${patch}"; \
-	done
-	cp -f src/Makefile $(PKG_BUILD_DIR)
+	$(call Build/Prepare/Default)
+	mkdir -p $(PKG_BUILD_DIR)/$(MAKE_PATH)/kernel
+	$(CP) $(LINUX_DIR)/* $(PKG_BUILD_DIR)/$(MAKE_PATH)/kernel/
 endef
 
 define Build/Compile
-	$(MAKE) -C "$(LINUX_DIR)" \
+	$(MAKE_VARS) $(MAKE) -C "$(LINUX_DIR)" \
 		$(KERNEL_MAKE_FLAGS) \
-		M="$(PKG_BUILD_DIR)" \
+		M="$(PKG_BUILD_DIR)/$(MAKE_PATH)" \
 		EXTRA_CFLAGS="$(BUILDFLAGS)" \
+		WIREGUARD_VERSION="$(WIREGUARD_VERSION)" \
 		modules
 endef
 

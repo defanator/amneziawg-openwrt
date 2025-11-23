@@ -8,11 +8,13 @@ include $(TOPDIR)/rules.mk
 
 LUCI_TITLE:=AmneziaWG Web UI
 LUCI_DESCRIPTION:=Provides Web UI for AmneziaWG
-LUCI_DEPENDS:=+luci-base +amneziawg-tools +ucode
+LUCI_DEPENDS:=+luci-base +amneziawg-tools +ucode +luci-lib-uqr +resolveip
 LUCI_PKGARCH:=all
+PKGARCH:=all
 
 PKG_MAINTAINER:=Amnezia Admin <admin@amnezia.org>
 PKG_PROVIDES:=luci-proto-amneziawg
+PKG_LICENSE:=Apache-2.0
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
