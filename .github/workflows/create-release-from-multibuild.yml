@@ -12,7 +12,7 @@ on:
         description: "OpenWrt version(s)"
         type: string
         required: true
-        default: "23.05.5 23.05.3"
+        default: "24.10.2 23.05.5 23.05.3"
 
 jobs:
   generate-target-matrix:
