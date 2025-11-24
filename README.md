@@ -4,6 +4,13 @@ This repo is a fork of original [amneziawg-openwrt](https://github.com/amnezia-v
 
 The idea is to keep it up to date with the upstream for all the general sources. All the extra features are basically combined into a top-level [Makefile](Makefile) and a set of GitHub action [workflows](.github/workflows/).
 
+## OpenWRT package feed
+
+Custom OpenWRT package feed with binary packages built using pipelines of this repository is available [here](https://etaoin.shrdlu.club/openwrt-amneziawg/).
+
+Please note that it does include quite limited number of targets.
+If your target is not available, you may want to [open an issue](https://github.com/defanator/amneziawg-openwrt/issues), or refer to alternative builds available out there such as [https://github.com/Slava-Shchipunov/awg-openwrt](https://github.com/Slava-Shchipunov/awg-openwrt).
+
 ## Added features
 
  1. [Makefile](Makefile) providing a number of targets:
