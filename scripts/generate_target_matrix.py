@@ -158,6 +158,11 @@ async def main():
         help="YAML configuration file specifying OpenWrt versions and targets",
     )
     parser.add_argument(
+        "version",
+        nargs="*",
+        help="OpenWrt version(s) to build (must exist in config file). If none specified, returns empty array.",
+    )
+    parser.add_argument(
         "--verbose", action="store_true", default=False, help="enable logging"
     )
     args = parser.parse_args()
@@ -188,8 +193,37 @@ async def main():
         )
         return 1
 
+    # If no versions specified, return empty array
+    if not args.version:
+        logger.info("No versions specified, returning empty array")
+        print(json.dumps(job_config, separators=(",", ":")))
+        logger.info("stopped")
+        return 0
+
+    # Validate that all specified versions exist in config
+    missing_versions = []
+    for version in args.version:
+        if version not in config:
+            missing_versions.append(version)
+
+    if missing_versions:
+        logger.error(
+            "The following versions are not found in config file %s: %s",
+            args.config,
+            ", ".join(missing_versions),
+        )
+        logger.error("Available versions in config: %s", ", ".join(config.keys()))
+        return 1
+
+    # Process only the specified versions
+    versions_to_process = set(args.version)
+
     try:
         for version_str, target_config in config.items():
+            # Skip versions not requested
+            if version_str not in versions_to_process:
+                continue
+
             if not isinstance(target_config, dict):
                 logger.warning(
                     "Skipping invalid target config for version %s: expected dictionary",
