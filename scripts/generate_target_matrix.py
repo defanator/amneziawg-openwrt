@@ -10,27 +10,20 @@ import logging
 import json
 import asyncio
 import aiohttp
+import yaml
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger(os.path.basename(__file__))
 
-# filtered targets for release builds
-TARGETS_TO_BUILD = ["ath79"]
-#SUBTARGETS_TO_BUILD = ["generic", "nand"]
-SUBTARGETS_TO_BUILD = ["generic"]
-
-# filtered targets for snapshot builds
-SNAPSHOT_TARGETS_TO_BUILD = ["ath79"]
-SNAPSHOT_SUBTARGETS_TO_BUILD = ["generic", "nand"]
-
 
 class OpenWrtBuildInfoFetcher:
-    def __init__(self, version):
+    def __init__(self, version, target_config):
         self._session = None
         self.url = "https://downloads.openwrt.org/"
-        self.version = version.lower()
+        self.version = version
+        self.target_config = target_config
 
-        if self.version == "snapshot":
+        if self.version.lower() == "snapshot":
             self.base_uri = "/snapshots/targets/"
         else:
             self.base_uri = f"/releases/{version}/targets/"
@@ -67,9 +60,9 @@ class OpenWrtBuildInfoFetcher:
         for element in s.select("table tr td.n a"):
             name = element.get("href")
             if name and name.endswith("/"):
-                if len(TARGETS_TO_BUILD) > 0 and name[:-1] not in TARGETS_TO_BUILD:
-                    continue
-                self.targets[name[:-1]] = {}
+                target_name = name[:-1]
+                if target_name in self.target_config:
+                    self.targets[target_name] = {}
 
     async def get_subtargets(self):
         logger.info("fetching subtargets")
@@ -87,15 +80,12 @@ class OpenWrtBuildInfoFetcher:
             for element in s.select("table tr td.n a"):
                 name = element.get("href")
                 if name and name.endswith("/"):
-                    if (
-                        len(SUBTARGETS_TO_BUILD) > 0
-                        and name[:-1] not in SUBTARGETS_TO_BUILD
-                    ):
-                        continue
-                    self.targets[target][name[:-1]] = {
-                        "vermagic": None,
-                        "pkgarch": None,
-                    }
+                    subtarget_name = name[:-1]
+                    if subtarget_name in self.target_config[target]:
+                        self.targets[target][subtarget_name] = {
+                            "vermagic": None,
+                            "pkgarch": None,
+                        }
 
     async def get_details(self):
         logger.info("fetching details")
@@ -157,15 +147,73 @@ class OpenWrtBuildInfoFetcher:
             #            self.targets[target][subtarget]["pkgarch"] = m.group(2)
             #            break
 
+    def validate_config(self):
+        """Validate that all configured targets/subtargets exist on downloads site."""
+        missing_combinations = []
+
+        for target in self.target_config:
+            if target not in self.targets:
+                for subtarget in self.target_config[target]:
+                    missing_combinations.append(f"{target}/{subtarget}")
+            else:
+                for subtarget in self.target_config[target]:
+                    if subtarget not in self.targets[target]:
+                        missing_combinations.append(f"{target}/{subtarget}")
+
+        if missing_combinations:
+            logger.error(
+                "Invalid target/subtarget combinations found in configuration:"
+            )
+            for combo in sorted(missing_combinations):
+                logger.error("  - %s", combo)
+            logger.error(
+                "These combinations do not exist on the OpenWrt downloads site."
+            )
+            raise Exception(
+                f"Validation failed: {len(missing_combinations)} invalid target/subtarget combinations"
+            )
+
+
+def validate_config_schema(config):
+    """Validate that config has the correct schema."""
+    if not isinstance(config, dict):
+        raise ValueError("Configuration must be a dictionary with version keys")
+
+    for version, target_config in config.items():
+        if not isinstance(target_config, dict):
+            raise ValueError(
+                f"Configuration for version '{version}' must be a dictionary with target keys, "
+                f"got {type(target_config).__name__}"
+            )
+
+        for target, subtargets in target_config.items():
+            if not isinstance(subtargets, list):
+                raise ValueError(
+                    f"Subtargets for version '{version}', target '{target}' must be a list, "
+                    f"got {type(subtargets).__name__}: {subtargets}"
+                )
+
+            for i, subtarget in enumerate(subtargets):
+                if not isinstance(subtarget, str):
+                    raise ValueError(
+                        f"Subtarget {i} for version '{version}', target '{target}' must be a string, "
+                        f"got {type(subtarget).__name__}: {subtarget}"
+                    )
+
 
 async def main():
     parser = argparse.ArgumentParser(
         description="Generate build matrix for amneziawg-openwrt GitHub CI"
     )
     parser.add_argument(
+        "--config",
+        required=True,
+        help="YAML configuration file specifying OpenWrt versions and targets",
+    )
+    parser.add_argument(
         "version",
-        help="OpenWrt version (use SNAPSHOT for building against snapshots)",
-        nargs="+",
+        nargs="*",
+        help="OpenWrt version(s) to build (must exist in config file). If none specified, returns empty array.",
     )
     parser.add_argument(
         "--verbose", action="store_true", default=False, help="enable logging"
@@ -181,25 +229,86 @@ async def main():
     logger.info("started")
     job_config = []
 
-    versions = set()
-    for version in args.version:
-        if version.lower() in versions:
-            logger.warning("duplicate version ignored: %s", version)
-            continue
-        versions.add(version.lower())
+    # Load YAML configuration
+    try:
+        with open(args.config, "r", encoding="utf-8") as config_file:
+            config = yaml.safe_load(config_file)
+    except FileNotFoundError:
+        logger.error("Configuration file not found: %s", args.config)
+        return 1
+    except yaml.YAMLError as e:
+        logger.error("Error parsing YAML configuration: %s", e)
+        return 1
+
+    if not isinstance(config, dict):
+        logger.error(
+            "Invalid configuration format: expected dictionary with version keys"
+        )
+        return 1
 
     try:
-        for version in versions:
-            async with OpenWrtBuildInfoFetcher(version=version) as of:
+        validate_config_schema(config)
+    except ValueError as e:
+        logger.error("Configuration validation failed: %s", e)
+        return 1
+
+    # If no versions specified, return empty array
+    if not args.version:
+        logger.info("No versions specified, returning empty array")
+        print(json.dumps(job_config, separators=(",", ":")))
+        logger.info("stopped")
+        return 0
+
+    config_versions = set(v.lower() for v in config.keys())
+    versions_to_process = set(v.lower() for v in args.version)
+
+    # Validate that all specified versions exist in config
+    missing_versions = []
+    for version in versions_to_process:
+        if version not in config_versions:
+            missing_versions.append(version)
+
+    if missing_versions:
+        logger.error(
+            "The following versions are not found in config file %s: %s",
+            args.config,
+            ", ".join(missing_versions),
+        )
+        logger.error(
+            "Available versions in config: %s", ", ".join(sorted(config_versions))
+        )
+        return 1
+
+    try:
+        for version_str, target_config in config.items():
+            version_str = version_str.lower()
+
+            # Skip versions not requested
+            if version_str not in versions_to_process:
+                continue
+
+            if not isinstance(target_config, dict):
+                logger.warning(
+                    "Skipping invalid target config for version %s: expected dictionary",
+                    version_str,
+                )
+                continue
+
+            logger.info("Processing version: %s", version_str)
+
+            async with OpenWrtBuildInfoFetcher(
+                version=version_str, target_config=target_config
+            ) as of:
                 await of.get_targets()
                 await of.get_subtargets()
                 await of.get_details()
+                of.validate_config()
 
             for target, subtargets in of.targets.items():
                 for subtarget in subtargets:
                     job_config.append(
                         {
-                            "tag": version,
+                            "tag": version_str,
                             "target": target,
                             "subtarget": subtarget,
                             "vermagic": of.targets[target][subtarget]["vermagic"],

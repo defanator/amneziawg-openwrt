@@ -128,7 +128,7 @@ venv: .venv ## Create virtualenv
 
 .PHONY: generate-target-matrix
 generate-target-matrix: .venv ## Generate target matrix of build environments for GitHub CI
-	@printf "BUILD_MATRIX=%s" "$$($(TOPDIR)/.venv/bin/python3 $(TOPDIR)/scripts/generate_target_matrix.py $(OPENWRT_RELEASES))"
+	@printf "BUILD_MATRIX=%s" "$$($(TOPDIR)/.venv/bin/python3 $(TOPDIR)/scripts/generate_target_matrix.py --config $(TOPDIR)/target-matrix-config.yaml $(OPENWRT_RELEASES))"
 
 .PHONY: github-build-cache
 github-build-cache: ## Run GitHub workflow to create OpenWrt toolchain and kernel cache (use WORKFLOW_REF to specify branch/tag)
