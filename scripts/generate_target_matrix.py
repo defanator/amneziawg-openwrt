@@ -174,6 +174,33 @@ class OpenWrtBuildInfoFetcher:
             )
 
 
+def validate_config_schema(config):
+    """Validate that config has the correct schema."""
+    if not isinstance(config, dict):
+        raise ValueError("Configuration must be a dictionary with version keys")
+
+    for version, target_config in config.items():
+        if not isinstance(target_config, dict):
+            raise ValueError(
+                f"Configuration for version '{version}' must be a dictionary with target keys, "
+                f"got {type(target_config).__name__}"
+            )
+
+        for target, subtargets in target_config.items():
+            if not isinstance(subtargets, list):
+                raise ValueError(
+                    f"Subtargets for version '{version}', target '{target}' must be a list, "
+                    f"got {type(subtargets).__name__}: {subtargets}"
+                )
+
+            for i, subtarget in enumerate(subtargets):
+                if not isinstance(subtarget, str):
+                    raise ValueError(
+                        f"Subtarget {i} for version '{version}', target '{target}' must be a string, "
+                        f"got {type(subtarget).__name__}: {subtarget}"
+                    )
+
+
 async def main():
     parser = argparse.ArgumentParser(
         description="Generate build matrix for amneziawg-openwrt GitHub CI"
@@ -217,6 +244,12 @@ async def main():
         logger.error(
             "Invalid configuration format: expected dictionary with version keys"
         )
+        return 1
+
+    try:
+        validate_config_schema(config)
+    except ValueError as e:
+        logger.error("Configuration validation failed: %s", e)
         return 1
 
     # If no versions specified, return empty array
