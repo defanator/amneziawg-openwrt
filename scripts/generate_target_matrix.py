@@ -147,6 +147,32 @@ class OpenWrtBuildInfoFetcher:
             #            self.targets[target][subtarget]["pkgarch"] = m.group(2)
             #            break
 
+    def validate_config(self):
+        """Validate that all configured targets/subtargets exist on downloads site."""
+        missing_combinations = []
+
+        for target in self.target_config:
+            if target not in self.targets:
+                for subtarget in self.target_config[target]:
+                    missing_combinations.append(f"{target}/{subtarget}")
+            else:
+                for subtarget in self.target_config[target]:
+                    if subtarget not in self.targets[target]:
+                        missing_combinations.append(f"{target}/{subtarget}")
+
+        if missing_combinations:
+            logger.error(
+                "Invalid target/subtarget combinations found in configuration:"
+            )
+            for combo in sorted(missing_combinations):
+                logger.error("  - %s", combo)
+            logger.error(
+                "These combinations do not exist on the OpenWrt downloads site."
+            )
+            raise Exception(
+                f"Validation failed: {len(missing_combinations)} invalid target/subtarget combinations"
+            )
+
 
 async def main():
     parser = argparse.ArgumentParser(
@@ -239,6 +265,7 @@ async def main():
                 await of.get_targets()
                 await of.get_subtargets()
                 await of.get_details()
+                of.validate_config()
 
             for target, subtargets in of.targets.items():
                 for subtarget in subtargets:
