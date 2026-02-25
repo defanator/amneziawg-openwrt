@@ -32,5 +32,5 @@
     - filogic
 
 # snapshot builds use newer package format (.apk vs .ipk)
-#SNAPSHOT:
-#  ath79: ["generic"]
+snapshot:
+  ath79: ["generic"]

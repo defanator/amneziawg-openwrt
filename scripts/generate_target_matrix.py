@@ -20,10 +20,10 @@ class OpenWrtBuildInfoFetcher:
     def __init__(self, version, target_config):
         self._session = None
         self.url = "https://downloads.openwrt.org/"
-        self.version = version.lower()
+        self.version = version
         self.target_config = target_config
 
-        if self.version == "snapshot":
+        if self.version.lower() == "snapshot":
             self.base_uri = "/snapshots/targets/"
         else:
             self.base_uri = f"/releases/{version}/targets/"
@@ -226,10 +226,13 @@ async def main():
         logger.info("stopped")
         return 0
 
+    config_versions = set(v.lower() for v in config.keys())
+    versions_to_process = set(v.lower() for v in args.version)
+
     # Validate that all specified versions exist in config
     missing_versions = []
-    for version in args.version:
-        if version not in config:
+    for version in versions_to_process:
+        if version not in config_versions:
             missing_versions.append(version)
 
     if missing_versions:
@@ -238,14 +241,15 @@ async def main():
             args.config,
             ", ".join(missing_versions),
         )
-        logger.error("Available versions in config: %s", ", ".join(config.keys()))
+        logger.error(
+            "Available versions in config: %s", ", ".join(sorted(config_versions))
+        )
         return 1
-
-    # Process only the specified versions
-    versions_to_process = set(args.version)
 
     try:
         for version_str, target_config in config.items():
+            version_str = version_str.lower()
+
             # Skip versions not requested
             if version_str not in versions_to_process:
                 continue
