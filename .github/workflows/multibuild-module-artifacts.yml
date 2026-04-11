@@ -121,6 +121,7 @@ jobs:
           make export-env >> "$GITHUB_OUTPUT"
           time -p make prepare
           time -p make fix-host-symlinks
+          time -p make build-kernel
           time -p make build-amneziawg
           make prepare-artifacts
 
