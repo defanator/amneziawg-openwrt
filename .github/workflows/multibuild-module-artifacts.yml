@@ -127,6 +127,8 @@ jobs:
 
       - name: create feed archive
         id: create-feed-archive
+        env:
+          OPENWRT_SRCDIR: ../openwrt
         run: |
           set -x
           cd amneziawg-openwrt
