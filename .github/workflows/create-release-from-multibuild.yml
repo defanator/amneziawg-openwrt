@@ -127,6 +127,7 @@ jobs:
           make show-env
           time -p make prepare
           time -p make fix-host-symlinks
+          time -p make build-kernel
           time -p make build-amneziawg
           cat << EOF >release.sec
           ${{ secrets.RELEASE_FEED_SEC_KEY }}
