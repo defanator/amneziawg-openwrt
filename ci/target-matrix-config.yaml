@@ -1,0 +1,19 @@
+# OpenWrt build target matrix configuration
+#
+# See https://github.com/defanator/openwrt-crossbuild-env/blob/master/ci/target-matrix-config.yaml for details
+
+23.05.3:
+  ath79:
+    - generic
+
+24.10.5:
+  ath79:
+    - generic
+  mediatek:
+    - filogic
+
+25.12.0:
+  ath79:
+    - generic
+  mediatek:
+    - filogic

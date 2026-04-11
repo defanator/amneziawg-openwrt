@@ -4,62 +4,16 @@ SELF := $(abspath $(lastword $(MAKEFILE_LIST)))
 TOPDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 UPPERDIR := $(realpath $(TOPDIR)/../)
 
-OPENWRT_SRCDIR   ?= $(UPPERDIR)/openwrt
+OPENWRT_CROSSBUILD_ENV_DIR ?= $(UPPERDIR)/openwrt-crossbuild-env
+
 AMNEZIAWG_SRCDIR ?= $(TOPDIR)
 AMNEZIAWG_DSTDIR ?= $(UPPERDIR)/awgrelease
 
-OPENWRT_RELEASE   ?= 23.05.3
-OPENWRT_ARCH      ?= mips_24kc
-OPENWRT_TARGET    ?= ath79
-OPENWRT_SUBTARGET ?= generic
-OPENWRT_VERMAGIC  ?= auto
-OPENWRT_SNAPSHOT_REF ?= main
-
-# for generate-target-matrix
-OPENWRT_RELEASES  ?= $(OPENWRT_RELEASE)
-
-GITHUB_SHA        ?= $(shell git rev-parse --short HEAD)
-VERSION_STR       ?= $(shell git describe --tags --long --dirty)
-POSTFIX           := $(VERSION_STR)_v$(OPENWRT_RELEASE)_$(OPENWRT_ARCH)_$(OPENWRT_TARGET)_$(OPENWRT_SUBTARGET)
-FEED_NAME         := amneziawg-opkg-feed-$(VERSION_STR)-openwrt-$(OPENWRT_RELEASE)-$(OPENWRT_ARCH)-$(OPENWRT_TARGET)-$(OPENWRT_SUBTARGET)
-
-WORKFLOW_REF      ?= $(shell git rev-parse --abbrev-ref HEAD)
-
-ifneq ($(OPENWRT_RELEASE),snapshot)
-OPENWRT_ROOT_URL  ?= https://downloads.openwrt.org/releases
-OPENWRT_BASE_URL  ?= $(OPENWRT_ROOT_URL)/$(OPENWRT_RELEASE)/targets/$(OPENWRT_TARGET)/$(OPENWRT_SUBTARGET)
-OPENWRT_MANIFEST  ?= $(OPENWRT_BASE_URL)/openwrt-$(OPENWRT_RELEASE)-$(OPENWRT_TARGET)-$(OPENWRT_SUBTARGET).manifest
-OPENWRT_PKG_EXT   := .ipk
-else
-OPENWRT_ROOT_URL  ?= https://downloads.openwrt.org/snapshots
-OPENWRT_BASE_URL  ?= $(OPENWRT_ROOT_URL)/targets/$(OPENWRT_TARGET)/$(OPENWRT_SUBTARGET)
-OPENWRT_MANIFEST  ?= $(OPENWRT_BASE_URL)/openwrt-$(OPENWRT_TARGET)-$(OPENWRT_SUBTARGET).manifest
-OPENWRT_PKG_EXT   := .apk
-endif
+GITHUB_SHA       ?= $(shell git rev-parse --short HEAD)
+VERSION_STR      ?= $(shell git describe --tags --long --dirty)
+WORKFLOW_REF     ?= $(shell git rev-parse --abbrev-ref HEAD)
 
 NPROC ?= $(shell getconf _NPROCESSORS_ONLN)
-
-ifndef OPENWRT_VERMAGIC
-_NEED_VERMAGIC=1
-endif
-
-ifeq ($(OPENWRT_VERMAGIC), auto)
-_NEED_VERMAGIC=1
-endif
-
-OPENWRT_RELEASE_NUM := $(shell echo $(OPENWRT_RELEASE) | awk -F. '{printf "%02d%02d%02d", $$1, $$2, $$3}')
-
-ifeq ($(_NEED_VERMAGIC), 1)
-ifeq ($(OPENWRT_RELEASE), snapshot)
-OPENWRT_VERMAGIC := $(shell curl -fs $(OPENWRT_MANIFEST) | grep -- "^kernel" | sed -e "s,.*\~,," | cut -d '-' -f 1)
-else
-ifeq ($(shell [ $(OPENWRT_RELEASE_NUM) -ge 240000 ] && echo true || echo false), true)
-OPENWRT_VERMAGIC := $(shell curl -fs $(OPENWRT_MANIFEST) | grep -- "^kernel" | sed -e "s,.*\~,," | cut -d '-' -f 1)
-else
-OPENWRT_VERMAGIC := $(shell curl -fs $(OPENWRT_MANIFEST) | grep -- "^kernel" | sed -e "s,.*\-,,")
-endif
-endif
-endif
 
 ifndef USIGN
 ifneq ($(shell usign 2>&1 | grep -i -- "usage: usign"),)
@@ -120,111 +74,12 @@ export-var-%:
 
 export-env: $(addprefix export-var-, $(SHOW_ENV_VARS)) ## Export environment
 
-.venv:
-	python3 -m venv $(TOPDIR)/.venv
-	$(TOPDIR)/.venv/bin/python3 -m pip install -r $(TOPDIR)/requirements.txt
+-include $(OPENWRT_CROSSBUILD_ENV_DIR)/Makefile.crossbuild
+OPENWRT_SRCDIR ?= $(error OPENWRT_SRCDIR is not defined - might be an issue with including Makefile.crossbuild)
+OPENWRT_PKG_EXT ?= $(error OPENWRT_PKG_EXT is not defined - might be an issue with including Makefile.crossbuild)
 
-venv: .venv ## Create virtualenv
-
-.PHONY: generate-target-matrix
-generate-target-matrix: .venv ## Generate target matrix of build environments for GitHub CI
-	@printf "BUILD_MATRIX=%s" "$$($(TOPDIR)/.venv/bin/python3 $(TOPDIR)/scripts/generate_target_matrix.py --config $(TOPDIR)/target-matrix-config.yaml $(OPENWRT_RELEASES))"
-
-.PHONY: github-build-cache
-github-build-cache: ## Run GitHub workflow to create OpenWrt toolchain and kernel cache (use WORKFLOW_REF to specify branch/tag)
-	@{ \
-	set -ex ; \
-	gh workflow run build-toolchain-cache.yml \
-		--ref $(WORKFLOW_REF) \
-		-f openwrt_version=$(OPENWRT_RELEASE) \
-		-f openwrt_arch=$(OPENWRT_ARCH) \
-		-f openwrt_target=$(OPENWRT_TARGET) \
-		-f openwrt_subtarget=$(OPENWRT_SUBTARGET) \
-		-f openwrt_vermagic=$(OPENWRT_VERMAGIC) ; \
-	}
-
-.PHONY: github-build-artifacts
-github-build-artifacts: ## Run GitHub workflow to build amneziawg OpenWrt packages (use WORKFLOW_REF to specify branch/tag)
-	@{ \
-	set -ex ; \
-	gh workflow run build-module-artifacts.yml \
-		--ref $(WORKFLOW_REF) \
-		-f openwrt_version=$(OPENWRT_RELEASE) \
-		-f openwrt_arch=$(OPENWRT_ARCH) \
-		-f openwrt_target=$(OPENWRT_TARGET) \
-		-f openwrt_subtarget=$(OPENWRT_SUBTARGET) \
-		-f openwrt_vermagic=$(OPENWRT_VERMAGIC) ; \
-	}
-
-$(OPENWRT_SRCDIR):
-	@{ \
-	set -eux ; \
-	git clone https://github.com/openwrt/openwrt.git $@ ; \
-	if [ "$(OPENWRT_RELEASE)" != "snapshot" ]; then \
-		cd $@ ; \
-		git checkout v$(OPENWRT_RELEASE) ; \
-	else \
-		cd $@ ; \
-		git checkout $(OPENWRT_SNAPSHOT_REF) ; \
-	fi ; \
-	}
-
-$(OPENWRT_SRCDIR)/feeds.conf: | $(OPENWRT_SRCDIR)
-	@{ \
-	set -ex ; \
-	curl -fsL $(OPENWRT_BASE_URL)/feeds.buildinfo | tee $@ ; \
-	}
-
-$(OPENWRT_SRCDIR)/.config: | $(OPENWRT_SRCDIR)
-	@{ \
-	set -ex ; \
-	curl -fsL $(OPENWRT_BASE_URL)/config.buildinfo > $@ ; \
-	echo "CONFIG_PACKAGE_kmod-crypto-lib-chacha20=m" >> $@ ; \
-	echo "CONFIG_PACKAGE_kmod-crypto-lib-chacha20poly1305=m" >> $@ ; \
-	echo "CONFIG_PACKAGE_kmod-crypto-chacha20poly1305=m" >> $@ ; \
-	}
-
-.PHONY: build-toolchain
-build-toolchain: $(OPENWRT_SRCDIR)/feeds.conf $(OPENWRT_SRCDIR)/.config ## Build OpenWrt toolchain
-	@{ \
-	set -ex ; \
-	cd $(OPENWRT_SRCDIR) ; \
-	time -p ./scripts/feeds update ; \
-	time -p ./scripts/feeds install -a ; \
-	time -p make defconfig ; \
-	time -p make tools/install -i -j $(NPROC) ; \
-	time -p make toolchain/install -i -j $(NPROC) ; \
-	}
-
-.PHONY: build-kernel
-build-kernel: $(OPENWRT_SRCDIR)/feeds.conf $(OPENWRT_SRCDIR)/.config ## Build OpenWrt kernel
-	@{ \
-	set -ex ; \
-	cd $(OPENWRT_SRCDIR) ; \
-	time -p make defconfig ; \
-	time -p make V=s target/linux/compile -i -j $(NPROC) ; \
-	VERMAGIC=$$(cat ./build_dir/target-$(OPENWRT_ARCH)*/linux-$(OPENWRT_TARGET)_$(OPENWRT_SUBTARGET)/linux-*/.vermagic) ; \
-	echo "Vermagic: $${VERMAGIC}" ; \
-	if [ "$${VERMAGIC}" != "$(OPENWRT_VERMAGIC)" ]; then \
-		echo "Vermagic mismatch: $${VERMAGIC}, expected $(OPENWRT_VERMAGIC)" ; \
-		exit 1 ; \
-	fi ; \
-	}
-
-# TODO: this should not be required but actions/cache/save@v4 could not handle circular symlinks with error like this:
-# Warning: ELOOP: too many symbolic links encountered, stat '/home/runner/work/amneziawg-openwrt/amneziawg-openwrt/openwrt/staging_dir/toolchain-mips_24kc_gcc-11.2.0_musl/initial/lib/lib'
-# Warning: Cache save failed.
-.PHONY: purge-circular-symlinks
-purge-circular-symlinks:
-	@{ \
-	set -ex ; \
-	cd $(OPENWRT_SRCDIR) ; \
-	export LC_ALL=C ; \
-	for deadlink in $$(find . -follow -type l -printf "" 2>&1 | sed -e "s/find: '\(.*\)': Too many levels of symbolic links.*/\1/"); do \
-		echo "deleting dead link: $${deadlink}" ; \
-		rm -f "$${deadlink}" ; \
-	done ; \
-	}
+POSTFIX    := $(VERSION_STR)_v$(OPENWRT_RELEASE)_$(OPENWRT_ARCH)_$(OPENWRT_TARGET)_$(OPENWRT_SUBTARGET)
+FEED_NAME  := amneziawg-opkg-feed-$(VERSION_STR)-openwrt-$(OPENWRT_RELEASE)-$(OPENWRT_ARCH)-$(OPENWRT_TARGET)-$(OPENWRT_SUBTARGET)
 
 .PHONY: build-amneziawg
 build-amneziawg: ## Build amneziawg-openwrt kernel module and packages
@@ -358,7 +213,7 @@ verify-feed-apk:
 	$(TOPDIR)/scripts/apk-make-index.sh verify "$${target_path}" ; \
 	}
 
-ifneq ($(OPENWRT_RELEASE),snapshot)
+ifeq ($(OPENWRT_PKG_EXT),.ipk)
 .PHONY: create-feed
 create-feed: create-feed-ipk ## Create package feed
 

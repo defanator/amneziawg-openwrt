@@ -12,35 +12,50 @@ on:
         description: "OpenWrt version(s)"
         type: string
         required: true
-        default: "24.10.5 23.05.3"
+        default: "25.12.0 24.10.5 23.05.3"
 
 jobs:
   generate-target-matrix:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       build-matrix: ${{ steps.generate-target-matrix.outputs.BUILD_MATRIX }}
     env:
       OPENWRT_RELEASES: ${{ inputs.openwrt_versions || vars.DEFAULT_OPENWRT_VERSIONS }}
     steps:
-      - name: checkout amneziawg-openwrt
-        uses: actions/checkout@v4
+      - name: checkout openwrt-crossbuild-env
+        uses: actions/checkout@v6
         with:
+          path: openwrt-crossbuild-env
+          repository: defanator/openwrt-crossbuild-env
+          ref: 20260320
+          fetch-depth: 0
+
+      - name: checkout amneziawg-openwrt
+        uses: actions/checkout@v6
+        with:
+          path: amneziawg-openwrt
           fetch-depth: 0
 
       - name: prepare virtualenv
         id: prepare-virtualenv
         run: |
+          set -x
+          cd openwrt-crossbuild-env
           make show-env
-          make venv
+          make openwrt-crossbuild-env-venv
 
       - name: generate target matrix
         id: generate-target-matrix
+        env:
+          OPENWRT_TARGET_MATRIX_CONFIG: ../amneziawg-openwrt/ci/target-matrix-config.yaml
         run: |
-          make generate-target-matrix >> $GITHUB_OUTPUT
+          set -x
+          cd openwrt-crossbuild-env
+          make generate-target-matrix >> "$GITHUB_OUTPUT"
 
   build:
     name: "v${{ matrix.build_env.tag }} - ${{ matrix.build_env.pkgarch }} :: ${{ matrix.build_env.target }}/${{ matrix.build_env.subtarget }} amneziawg build"
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     needs: generate-target-matrix
     strategy:
       fail-fast: false
@@ -55,14 +70,22 @@ jobs:
       OPENWRT_VERMAGIC: ${{ matrix.build_env.vermagic }}
 
     steps:
+      - name: checkout openwrt-crossbuild-env
+        uses: actions/checkout@v6
+        with:
+          path: openwrt-crossbuild-env
+          repository: defanator/openwrt-crossbuild-env
+          ref: 20260320
+          fetch-depth: 0
+
       - name: checkout amneziawg-openwrt
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: amneziawg-openwrt
           fetch-depth: 0
 
       - name: checkout openwrt
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: openwrt
           repository: openwrt/openwrt
@@ -70,7 +93,7 @@ jobs:
           fetch-depth: 0
 
       - name: checkout usign
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: usign
           repository: openwrt/usign
@@ -85,35 +108,19 @@ jobs:
           cd build
           cmake ..
           make -j
-          echo "$(pwd)" >> $GITHUB_PATH
-
-      - name: restore cached tools and kernel
-        id: cache-tools-kernel-restore
-        uses: actions/cache/restore@v4
-        with:
-          fail-on-cache-miss: true
-          key: ${{ runner.os }}-openwrt-cache-toolchain-kernel-${{ matrix.build_env.tag }}-${{ matrix.build_env.pkgarch }}-${{ matrix.build_env.target }}-${{ matrix.build_env.subtarget }}
-          restore-keys: |
-            ${{ runner.os }}-openwrt-cache-tools-kernel-${{ matrix.build_env.pkgarch }}-
-          path: |
-            openwrt/.config
-            openwrt/.config.old
-            openwrt/feeds.conf
-            openwrt/bin/**
-            openwrt/build_dir/**
-            openwrt/dl/**
-            openwrt/feeds/**
-            openwrt/package/**
-            openwrt/staging_dir/**
-            openwrt/tmp/**
+          echo "$(pwd)" >> "$GITHUB_PATH"
 
       - name: build amneziawg
         id: build-amneziawg
+        env:
+          OPENWRT_SRCDIR: ../openwrt
         run: |
           set -x
           cd amneziawg-openwrt
           make show-env
-          make export-env >> $GITHUB_OUTPUT
+          make export-env >> "$GITHUB_OUTPUT"
+          time -p make prepare
+          time -p make fix-host-symlinks
           time -p make build-amneziawg
           make prepare-artifacts
 
@@ -129,7 +136,7 @@ jobs:
 
       - name: upload artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: amneziawg-${{ steps.build-amneziawg.outputs.version_str }}-openwrt-${{ matrix.build_env.tag }}-${{ matrix.build_env.pkgarch}}-${{ matrix.build_env.target}}-${{ matrix.build_env.subtarget}}
           path: |
