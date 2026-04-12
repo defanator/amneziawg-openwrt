@@ -81,6 +81,8 @@ OPENWRT_PKG_EXT ?= $(error OPENWRT_PKG_EXT is not defined - might be an issue wi
 POSTFIX    := $(VERSION_STR)_v$(OPENWRT_RELEASE)_$(OPENWRT_ARCH)_$(OPENWRT_TARGET)_$(OPENWRT_SUBTARGET)
 FEED_NAME  := amneziawg-opkg-feed-$(VERSION_STR)-openwrt-$(OPENWRT_RELEASE)-$(OPENWRT_ARCH)-$(OPENWRT_TARGET)-$(OPENWRT_SUBTARGET)
 
+APK := $(realpath $(OPENWRT_SRCDIR)/staging_dir/host/bin/apk)
+
 .PHONY: build-amneziawg
 build-amneziawg: ## Build amneziawg-openwrt kernel module and packages
 	@{ \
@@ -191,7 +193,7 @@ verify-feed-ipk: | $(FEED_PATH)
 create-feed-apk:
 	@{ \
 	set -eux ; \
-	export APK="$(OPENWRT_SRCDIR)/staging_dir/host/bin/apk" ; \
+	export APK="$(APK)" ; \
 	$${APK} --version ; \
 	target_path=$(FEED_PATH)/$(OPENWRT_RELEASE)/$(OPENWRT_TARGET)/$(OPENWRT_SUBTARGET) ; \
 	mkdir -p $${target_path} ; \
@@ -206,7 +208,7 @@ create-feed-apk:
 verify-feed-apk:
 	@{ \
 	set -eux ; \
-	export APK="$(OPENWRT_SRCDIR)/staging_dir/host/bin/apk" ; \
+	export APK="$(APK)" ; \
 	$${APK} --version ; \
 	target_path=$(FEED_PATH)/$(OPENWRT_RELEASE)/$(OPENWRT_TARGET)/$(OPENWRT_SUBTARGET) ; \
 	$(TOPDIR)/scripts/apk-make-index.sh dump "$${target_path}" ; \
