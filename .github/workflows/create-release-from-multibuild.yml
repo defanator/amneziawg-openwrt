@@ -125,6 +125,7 @@ jobs:
           set -x
           cd amneziawg-openwrt
           make show-env
+          make export-env >> "$GITHUB_OUTPUT"
           time -p make prepare
           time -p make fix-host-symlinks
           time -p make build-kernel
